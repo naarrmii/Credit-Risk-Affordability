@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+data/*.csv
+.ipynb_checkpoints/
+
+# data/processed/ is intentionally tracked, not excluded here.
+# It holds the trained model and cleaned dataset the live dashboard needs to run.
+# Only the raw Kaggle file above (data/*.csv) is excluded, since redistributing
+# that directly isn't appropriate; the cleaned, derived version is fine to share.
