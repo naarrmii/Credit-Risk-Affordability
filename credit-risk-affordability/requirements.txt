@@ -1,0 +1,16 @@
+# Phase 1 (needed now) - already included in the Anaconda distribution,
+# listed here anyway so the project is reproducible for anyone without Anaconda
+pandas
+numpy
+jupyter
+ipykernel
+
+# Later phases - install with `pip install -r requirements.txt` again once we get there
+scikit-learn
+matplotlib
+seaborn
+shap
+fairlearn
+streamlit
+plotly
+# Note: HistGradientBoostingClassifier is built into scikit-learn, no xgboost install needed
