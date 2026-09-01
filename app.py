@@ -128,11 +128,20 @@ def metrics_at_threshold(y_true, probs, threshold):
     return precision, recall, selection_rate
 
 
+@st.cache_resource(show_spinner="Setting up the explanation engine...")
+def get_shap_explainer(_model):
+    """Built once, cached for the lifetime of the app, and reused by both the
+    bank view's global chart and the consumer view's per-person explanation.
+    Rebuilding this on every single consumer submission was real, accumulating
+    overhead, and the actual cause of the app slowing down after repeated use."""
+    return shap.TreeExplainer(_model)
+
+
 def explain_single_result(model, row):
     """Work out, in plain terms, which pieces of information mattered most
     for one specific person's score. Kept separate from the bank view's SHAP
     chart deliberately, since this needs to read as an outcome, not a method."""
-    explainer = shap.TreeExplainer(model)
+    explainer = get_shap_explainer(model)
     row_df = pd.DataFrame([row])[model.feature_names_in_]
     raw = explainer.shap_values(row_df)
     if isinstance(raw, list):
@@ -273,13 +282,27 @@ def load_split():
     df = pd.read_csv('data/processed/cleaned_features.csv', index_col=0)
     X = df.drop(columns=['SeriousDlqin2yrs'])
     y = df['SeriousDlqin2yrs']
-    return train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+    # Only X_test/y_test are ever actually used anywhere in this app - the
+    # model is already trained and loaded from disk, not retrained here.
+    # Discarding X_train/y_train immediately, rather than returning and
+    # caching them, removes roughly 80% of this dataset's memory footprint
+    # from the running app for no loss of functionality.
+    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+    return X_test, y_test
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Working out what drives each prediction, this can take a moment...")
 def compute_shap_values(_model, X_model):
-    explainer = shap.TreeExplainer(_model)
-    raw = explainer.shap_values(X_model)
+    # A random sample of 2,000 rows gives a stable, representative answer for
+    # the global importance chart, since the average impact of a feature
+    # settles down well before you have seen all 30,000 rows. Computing SHAP
+    # over the full test set is unnecessary work and was the actual cause of
+    # the app appearing to hang, since Streamlit Community Cloud's free tier
+    # has limited CPU and memory to do this on every cold start.
+    sample_size = min(2000, len(X_model))
+    X_sample = X_model.sample(n=sample_size, random_state=42)
+    explainer = get_shap_explainer(_model)
+    raw = explainer.shap_values(X_sample)
     if isinstance(raw, list):
         return np.array(raw[1])
     if raw.ndim == 3:
@@ -287,7 +310,7 @@ def compute_shap_values(_model, X_model):
     return raw
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Checking outcomes across age groups...")
 def compute_age_fairness(_model, X_full, X_model, y_true):
     bins = [17, 30, 45, 60, 120]
     labels = ['18 to 30', '31 to 45', '46 to 60', '61 and over']
@@ -309,7 +332,7 @@ def compute_age_fairness(_model, X_full, X_model, y_true):
 
 inject_custom_css()
 model = load_model()
-X_train, X_test, y_train, y_test = load_split()
+X_test, y_test = load_split()
 X_test_model = X_test[list(model.feature_names_in_)]
 
 # ---------------------------------------------------------------------------
@@ -414,7 +437,7 @@ with bank_tab:
         xaxis=dict(gridcolor=BORDER), yaxis=dict(gridcolor=BORDER), showlegend=False,
         hoverlabel=dict(bgcolor=SURFACE, font=CHART_FONT, bordercolor=BORDER), **TRANSPARENT_BG
     )
-    st.plotly_chart(fig_pr, use_container_width=True)
+    st.plotly_chart(fig_pr, use_container_width=True, config={'staticPlot': True})
 
     st.write("")
     st.subheader("What drives the model's decisions")
@@ -440,7 +463,7 @@ with bank_tab:
         xaxis=dict(gridcolor=BORDER), yaxis=dict(gridcolor='rgba(0,0,0,0)'),
         hoverlabel=dict(bgcolor=SURFACE, font=CHART_FONT, bordercolor=BORDER), **TRANSPARENT_BG
     )
-    st.plotly_chart(fig_shap, use_container_width=True)
+    st.plotly_chart(fig_shap, use_container_width=True, config={'staticPlot': True})
     st.markdown(
         "Past payment history and credit utilisation matter most here. That is exactly the kind of "
         "signal you would expect from a credit model, not a random pattern. Age does not appear at "
@@ -515,7 +538,7 @@ with bank_tab:
         xaxis=dict(gridcolor='rgba(0,0,0,0)'), yaxis=dict(gridcolor=BORDER),
         hoverlabel=dict(bgcolor=SURFACE, font=CHART_FONT, bordercolor=BORDER), **TRANSPARENT_BG
     )
-    st.plotly_chart(fig_fair, use_container_width=True)
+    st.plotly_chart(fig_fair, use_container_width=True, config={'staticPlot': True})
     st.markdown(
         "Each group of bars is one age band. The three colours show, for that age band, how often "
         "the model flagged someone as high risk, how often that flag turned out to be wrong, and how "
@@ -619,7 +642,7 @@ with consumer_tab:
                     }
                 ))
                 fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=20, b=10), font=CHART_FONT, **TRANSPARENT_BG)
-                st.plotly_chart(fig_gauge, use_container_width=True)
+                st.plotly_chart(fig_gauge, use_container_width=True, config={'staticPlot': True})
             with text_col:
                 st.markdown(
                     f'<div class="gradient-text" style="font-size:3.2rem;font-weight:800;line-height:1;">{baseline_score:.0%}</div>',
