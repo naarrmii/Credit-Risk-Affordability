@@ -1,6 +1,8 @@
 # Can You Actually Afford This Loan?
 ### A credit risk project built around one idea: a lending decision should be explainable and fair, not just accurate.
 
+**Live demo:** [Try it yourself here](https://credit-affordability-check.streamlit.app/). Two views: one for a bank's risk team, and one where you can type in your own numbers and get a real estimate.
+
 ## Why I built this
 
 I have a BSc in Accounting and Finance, and I am partway through an MSc in Data Science, currently on a placement year doing trade compliance analysis. I wanted a portfolio project that showed more than the ability to follow a tutorial. Most public projects on this kind of dataset stop at "clean the data, fit a model, report an accuracy number." I wanted to build something that actually behaved like a real financial decision, with all the messiness, trade-offs and second-guessing that involves, and that I could explain properly to anyone, technical or not.
